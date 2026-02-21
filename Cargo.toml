@@ -2,6 +2,9 @@
 name = "restic-sync"
 version = "0.1.0"
 edition = "2024"
+description = "Synchronizes a Restic REST repository to another."
+license = "MIT"
+repository = "https://github.com/gaoyifan/restic-sync"
 
 [dependencies]
 anyhow = "1.0.102"
