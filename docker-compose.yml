@@ -1,0 +1,22 @@
+services:
+  rest-server-source:
+    image: restic/rest-server:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DISABLE_AUTHENTICATION=1
+    volumes:
+      - source-data:/data
+
+  rest-server-dest:
+    image: restic/rest-server:latest
+    ports:
+      - "8001:8000"
+    environment:
+      - DISABLE_AUTHENTICATION=1
+    volumes:
+      - dest-data:/data
+
+volumes:
+  source-data:
+  dest-data:
