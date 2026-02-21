@@ -2,6 +2,8 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use log::{debug, info, warn};
 use reqwest::{Client, StatusCode};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -78,7 +80,10 @@ async fn run_sync(args: &Args) -> Result<()> {
     info!("Dest: {}", dest);
     info!("Prune: {}", args.prune);
 
-    let client = Client::new();
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
+    let client = ClientBuilder::new(Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build();
 
     // 1. Initialize destination repository
     init_dest(&client, &dest).await?;
@@ -103,7 +108,7 @@ fn normalize_url(url: &str) -> String {
     }
 }
 
-async fn init_dest(client: &Client, dest: &str) -> Result<()> {
+async fn init_dest(client: &ClientWithMiddleware, dest: &str) -> Result<()> {
     let url = format!("{}?create=true", dest);
     info!("Ensuring destination repository exists: {}", url);
     let resp = client.post(&url).send().await?;
@@ -113,7 +118,7 @@ async fn init_dest(client: &Client, dest: &str) -> Result<()> {
     Ok(())
 }
 
-async fn sync_config(client: &Client, source: &str, dest: &str) -> Result<()> {
+async fn sync_config(client: &ClientWithMiddleware, source: &str, dest: &str) -> Result<()> {
     let source_url = format!("{}config", source);
     let dest_url = format!("{}config", dest);
 
@@ -154,7 +159,7 @@ async fn sync_config(client: &Client, source: &str, dest: &str) -> Result<()> {
     Ok(())
 }
 
-async fn list_files(client: &Client, repo: &str, file_type: &str) -> Result<Vec<FileInfo>> {
+async fn list_files(client: &ClientWithMiddleware, repo: &str, file_type: &str) -> Result<Vec<FileInfo>> {
     let url = format!("{}{}/", repo, file_type);
     debug!("Listing files for {}: {}", file_type, url);
 
@@ -184,7 +189,7 @@ async fn list_files(client: &Client, repo: &str, file_type: &str) -> Result<Vec<
 }
 
 async fn sync_type(
-    client: &Client,
+    client: &ClientWithMiddleware,
     source: &str,
     dest: &str,
     file_type: &str,
@@ -251,7 +256,7 @@ async fn sync_type(
 }
 
 async fn sync_file(
-    client: &Client,
+    client: &ClientWithMiddleware,
     source: &str,
     dest: &str,
     file_type: &str,
@@ -292,7 +297,7 @@ async fn sync_file(
     Ok(())
 }
 
-async fn delete_file(client: &Client, dest: &str, file_type: &str, name: &str) -> Result<()> {
+async fn delete_file(client: &ClientWithMiddleware, dest: &str, file_type: &str, name: &str) -> Result<()> {
     let url = format!("{}{}/{}", dest, file_type, name);
     let resp = client.delete(&url).send().await?;
     if !resp.status().is_success() {
