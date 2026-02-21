@@ -17,6 +17,17 @@ services:
     volumes:
       - dest-data:/data
 
+  sync:
+    build: .
+    environment:
+      - REST_SYNC_SOURCE=http://rest-server-source:8000/
+      - REST_SYNC_DEST=http://rest-server-dest:8000/
+      # Runs every 5 seconds for testing purposes
+      - REST_SYNC_CRON=1/5 * * * * *
+    depends_on:
+      - rest-server-source
+      - rest-server-dest
+
 volumes:
   source-data:
   dest-data:

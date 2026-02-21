@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Synchronizes a Restic REST repository to another.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Source Restic REST repository URL
@@ -21,6 +21,10 @@ struct Args {
     /// Delete files in the destination that do not exist in the source
     #[arg(long, default_value_t = false)]
     prune: bool,
+
+    /// Cron expression for periodic sync (e.g., "0 0 * * * *")
+    #[arg(long, env = "REST_SYNC_CRON")]
+    cron: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -36,6 +40,37 @@ async fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
 
+    if let Some(cron_expr) = &args.cron {
+        use tokio_cron_scheduler::{Job, JobScheduler};
+        
+        info!("Starting scheduled sync with cron: {}", cron_expr);
+        let sched = JobScheduler::new().await?;
+        
+        let args_clone = args.clone();
+        let job = Job::new_async(cron_expr.as_str(), move |uuid, _l| {
+            let args = args_clone.clone();
+            Box::pin(async move {
+                info!("Running scheduled sync job {}", uuid);
+                if let Err(e) = run_sync(&args).await {
+                    warn!("Scheduled sync failed: {:?}", e);
+                }
+            })
+        })?;
+        
+        sched.add(job).await?;
+        sched.start().await?;
+        
+        // Wait forever
+        tokio::signal::ctrl_c().await?;
+        info!("Shutting down scheduled sync...");
+    } else {
+        run_sync(&args).await?;
+    }
+
+    Ok(())
+}
+
+async fn run_sync(args: &Args) -> Result<()> {
     let source = normalize_url(&args.source);
     let dest = normalize_url(&args.dest);
 
