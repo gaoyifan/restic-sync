@@ -19,3 +19,4 @@ target/
 
 # Project specific test data generated during 'just test'
 data_test_files/
+references/
